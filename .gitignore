@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+.github/instructions/
+.github/skills/
+.github/agents/
+.github/mkdoc_memory/
+.github/prompts/
