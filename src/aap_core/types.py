@@ -1,7 +1,7 @@
 import abc
 import json
 import logging
-from typing import Any, Dict, List, Literal, Tuple, TypeVar
+from typing import Any, Dict, List, Literal, Tuple, TypeVar, get_args
 from typing_extensions import TypedDict
 
 from pydantic import BaseModel, Field
@@ -15,6 +15,17 @@ ChainMessage = TypeVar("ChainMessage")
 ChainResponse = TypeVar("ChainResponse")
 AgentResponse = Tuple[str, str]
 ContentType = Literal["text", "image", "audio", "video", "document"]
+
+# The modalities the media gate consults. Derived from ContentType rather than
+# listed next to it: every modality but "text" carries media through
+# BaseLLMChain._media_parts, and each integration package compares the set its
+# capability sources answered on against this tuple to decide whether a further
+# source is worth querying. A hand-maintained copy in four packages silently
+# reports undecidable forever for any modality added to ContentType and forgotten
+# in those copies, so there is one definition and it tracks the type.
+GATED_MODALITIES: Tuple[ContentType, ...] = tuple(
+    modality for modality in get_args(ContentType) if modality != "text"
+)
 
 
 class TokenUsage(TypedDict):

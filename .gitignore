@@ -224,3 +224,4 @@ __marimo__/
 .github/agents/
 .github/mkdoc_memory/
 .github/prompts/
+ckpt/*.pt
