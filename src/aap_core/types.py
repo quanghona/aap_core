@@ -206,10 +206,13 @@ class BaseLLMChain(BaseChain):
         - "enabled": always attach parts of that modality, overriding detection.
         - "disabled": never attach parts of that modality.
 
-        Currently only "image" refs are mapped to native parts by the integration
-        packages; the other ContentType keys are wired at the base layer so adding
-        a modality later is a package-side mapping plus sniffing-table change, not
-        a redesign of this gate.""",
+        Image and audio refs carry format knowledge in the base layer (see
+        SUPPORTED_MIME_TYPES in aap_core.utils): resolution identifies the
+        container and normalizes it onto a string a provider accepts, so an
+        integration only has to map a resolved MediaReference to its native part
+        type. Video and document keys are wired through this same gate without
+        format tables yet, which makes adding them a package-side mapping plus a
+        table change, not a redesign of this gate.""",
     )
 
     @abc.abstractmethod
@@ -284,8 +287,23 @@ class BaseLLMChain(BaseChain):
     def _image_parts(self, message: AgentMessage) -> List[MediaReference]:
         """Resolve the image media of a message.
 
-        Sugar for _media_parts(message, "image"). Image is the first modality
-        wired through the integration packages; audio/video/document will get
-        their own sugar (or call _media_parts directly) when implemented.
+        Sugar for _media_parts(message, "image").
         """
         return self._media_parts(message, "image")
+
+    def _audio_parts(self, message: AgentMessage) -> List[MediaReference]:
+        """Resolve the audio media of a message.
+
+        Sugar for _media_parts(message, "audio"). Audio is a content part here,
+        not a transcript: the bytes reach the model as audio, so a chain that
+        wants speech-to-text first and text second is a separate pipeline stage,
+        not this method.
+
+        The resolved mime_type is the one field an integration must translate, and
+        the target shape differs per provider: Gemini and OpenAI's Responses API
+        take a MIME string, while OpenAI's chat endpoints take a short format
+        token ("wav", "mp3") and DashScope takes its own list. That mapping is
+        provider knowledge, so it belongs in the integration package and not
+        here; SUPPORTED_MIME_TYPES["audio"] is the set those mappings must cover.
+        """
+        return self._media_parts(message, "audio")

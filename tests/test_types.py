@@ -2,12 +2,15 @@
 
 import json
 import logging
+from typing import get_args
 
 import pytest
 from aap_core.types import (
+    GATED_MODALITIES,
     AgentMessage,
     BaseChain,
     BaseLLMChain,
+    ContentType,
     TokenUsage,
 )
 from pydantic import PrivateAttr
@@ -380,3 +383,51 @@ class TestMediaGate:
         )
         chain = CapabilityMockChain(capabilities={"image": True})
         assert chain._image_parts(msg) == chain._media_parts(msg, "image")
+
+    def test_audio_parts_delegates_to_media_parts(self):
+        """Test the audio sugar matches the generic funnel and ignores images."""
+        msg = AgentMessage(
+            query="q",
+            query_media=[("image", "https://x/a.png"), ("audio", "https://x/b.mp3")],
+        )
+        chain = CapabilityMockChain(capabilities={"audio": True})
+        assert chain._audio_parts(msg) == chain._media_parts(msg, "audio")
+        assert [p["content_type"] for p in chain._audio_parts(msg)] == ["audio"]
+
+    def test_audio_parts_drops_media_when_gate_closed(self, caplog):
+        """Test an audio-incapable model drops audio with an audio-specific warning."""
+        msg = AgentMessage(query="q", query_media=[("audio", "https://x/a.wav")])
+        chain = CapabilityMockChain(capabilities={"audio": False})
+        with caplog.at_level(logging.WARNING, logger="aap_core.types"):
+            assert chain._audio_parts(msg) == []
+        assert "does not support audio input" in caplog.text
+
+    def test_audio_parts_local_path_resolved_to_base64(self, tmp_path):
+        """Test a local audio file reaches the chain as base64 with a canonical type."""
+        f = tmp_path / "speech.wav"
+        f.write_bytes(b"RIFF\x00\x00\x00\x00WAVEfmt " + b"\x00" * 8)
+        msg = AgentMessage(query="q", query_media=[("audio", str(f))])
+        parts = CapabilityMockChain()._audio_parts(msg)
+        assert parts[0]["kind"] == "base64"
+        assert parts[0]["mime_type"] == "audio/wav"
+
+    def test_audio_enabled_overrides_detection(self):
+        """Test audio can be forced open per-modality without touching image policy."""
+        chain = CapabilityMockChain(
+            capabilities={"audio": False},
+            media_support={"audio": "enabled", "image": "disabled"},
+        )
+        assert chain._modality_ok("audio") is True
+        assert chain._modality_ok("image") is False
+
+    def test_gated_modalities_tracks_content_type(self):
+        """Test the gated set is derived from ContentType, not kept by hand.
+
+        Each integration package compares the modalities its capability sources
+        answered on against this tuple to decide whether a further source is worth
+        querying. A copy maintained per package reports undecidable forever for any
+        modality added to ContentType and forgotten there, so the derivation is the
+        thing under test, not the current membership.
+        """
+        assert set(GATED_MODALITIES) == set(get_args(ContentType)) - {"text"}
+        assert "text" not in GATED_MODALITIES
