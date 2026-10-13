@@ -420,6 +420,57 @@ class TestMediaGate:
         assert chain._modality_ok("audio") is True
         assert chain._modality_ok("image") is False
 
+    def test_video_parts_delegates_to_media_parts(self):
+        """Test the video sugar matches the generic funnel and ignores other media."""
+        msg = AgentMessage(
+            query="q",
+            query_media=[("image", "https://x/a.png"), ("video", "https://x/b.mp4")],
+        )
+        chain = CapabilityMockChain(capabilities={"video": True})
+        assert chain._video_parts(msg) == chain._media_parts(msg, "video")
+        assert [p["content_type"] for p in chain._video_parts(msg)] == ["video"]
+
+    def test_video_parts_drops_media_when_gate_closed(self, caplog):
+        """Test a video-incapable model drops video with a video-specific warning."""
+        msg = AgentMessage(query="q", query_media=[("video", "https://x/a.mp4")])
+        chain = CapabilityMockChain(capabilities={"video": False})
+        with caplog.at_level(logging.WARNING, logger="aap_core.types"):
+            assert chain._video_parts(msg) == []
+        assert "does not support video input" in caplog.text
+
+    def test_video_parts_local_path_resolved_to_base64(self, tmp_path):
+        """Test a local video file reaches the chain as base64 with a canonical type."""
+        f = tmp_path / "clip.mp4"
+        f.write_bytes(b"\x00\x00\x00\x18ftypisom\x00\x00\x00\x00" + b"\x00" * 8)
+        msg = AgentMessage(query="q", query_media=[("video", str(f))])
+        parts = CapabilityMockChain()._video_parts(msg)
+        assert parts[0]["kind"] == "base64"
+        assert parts[0]["mime_type"] == "video/mp4"
+
+    def test_video_enabled_overrides_detection_without_touching_audio(self):
+        """Test video can be forced open per-modality while audio stays closed.
+
+        The gate is per-modality by design, and a model that takes video but not
+        audio is a real configuration (Gemini's file inputs, Qwen-VL), so the
+        policies must not leak into each other.
+        """
+        chain = CapabilityMockChain(
+            capabilities={"video": False, "audio": True},
+            media_support={"video": "enabled", "audio": "disabled"},
+        )
+        assert chain._modality_ok("video") is True
+        assert chain._modality_ok("audio") is False
+
+    def test_gated_modalities_includes_video(self):
+        """Test video is inside the gated set, so integrations must answer on it.
+
+        Each package compares the modalities its capability sources reported
+        against GATED_MODALITIES to decide whether another source is worth
+        querying; a modality missing from that comparison reports undecidable
+        forever, which is how a newly added modality fails silently.
+        """
+        assert "video" in GATED_MODALITIES
+
     def test_gated_modalities_tracks_content_type(self):
         """Test the gated set is derived from ContentType, not kept by hand.
 

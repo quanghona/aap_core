@@ -206,13 +206,13 @@ class BaseLLMChain(BaseChain):
         - "enabled": always attach parts of that modality, overriding detection.
         - "disabled": never attach parts of that modality.
 
-        Image and audio refs carry format knowledge in the base layer (see
+        Image, audio and video refs carry format knowledge in the base layer (see
         SUPPORTED_MIME_TYPES in aap_core.utils): resolution identifies the
         container and normalizes it onto a string a provider accepts, so an
         integration only has to map a resolved MediaReference to its native part
-        type. Video and document keys are wired through this same gate without
-        format tables yet, which makes adding them a package-side mapping plus a
-        table change, not a redesign of this gate.""",
+        type. Document keys are wired through this same gate without format
+        tables yet, which makes adding them a package-side mapping plus a table
+        change, not a redesign of this gate.""",
     )
 
     @abc.abstractmethod
@@ -307,3 +307,24 @@ class BaseLLMChain(BaseChain):
         here; SUPPORTED_MIME_TYPES["audio"] is the set those mappings must cover.
         """
         return self._media_parts(message, "audio")
+
+    def _video_parts(self, message: AgentMessage) -> List[MediaReference]:
+        """Resolve the video media of a message.
+
+        Sugar for _media_parts(message, "video"). Video is a container here, not a
+        frame sequence: the bytes reach the model as one video part, and sampling
+        frames out of it is the provider's decision (Gemini samples at 1 FPS,
+        DashScope exposes fps/max_frames, a local transformers processor takes
+        num_frames). Core deliberately does not decode or subsample - doing so
+        would pull a codec dependency into the base layer and hard-code one
+        provider's sampling policy for all of them, which is the same reasoning
+        that keeps audio undecoded.
+
+        An integration whose framework has no video content part must deny the
+        modality rather than degrade it to image parts. Turning one video into N
+        images changes what the model was told it received, and a silent
+        substitution is the failure this gate exists to prevent; the transport
+        ceiling pattern (adapter_capabilities) is how to express that.
+        SUPPORTED_MIME_TYPES["video"] is the set the mappings must cover.
+        """
+        return self._media_parts(message, "video")

@@ -247,6 +247,26 @@ AUDIO_SAMPLES = {
 # the tables.
 UNSUPPORTED_AUDIO = ["audio/basic", "audio/speex", "audio/amr-wb", "audio/x-caf"]
 
+# One byte fixture per deliverable video container, keyed by the type it must
+# resolve to when the caller declares the media as video. Same contract as
+# AUDIO_SAMPLES: if a type is advertised, some path must be able to produce it.
+VIDEO_SAMPLES = {
+    "video/mp4": b"\x00\x00\x00\x18ftypisom\x00\x00\x00\x00" + b"\x00" * 8,
+    "video/mpeg": b"\x00\x00\x01\xba" + b"\x00" * 16,  # MPEG program stream
+    "video/quicktime": b"\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00" + b"\x00" * 8,
+    "video/avi": b"RIFF\x00\x00\x00\x00AVI LIST" + b"\x00" * 8,
+    "video/webm": b"\x1a\x45\xdf\xa3" + b"\x00" * 13 + b"webm",
+    "video/x-flv": b"FLV\x01\x00\x00\x00\x09" + b"\x00" * 8,
+    "video/x-ms-wmv": b"\x30\x26\xb2\x75\x8e\x66\xcf\x11" + b"\x00" * 16,
+    "video/3gpp": b"\x00\x00\x00\x18ftyp3gp4\x00\x00\x00\x00" + b"\x00" * 8,
+}
+
+# Named by stdlib or a container probe but accepted by no surveyed provider as
+# video input. Matroska is here deliberately: it was listed as supported on the
+# strength of a source that turned out to publish no video container list, and
+# carrying an unattributable entry is the claim-without-delivery this set avoids.
+UNSUPPORTED_VIDEO = ["video/x-matroska", "video/ogg", "video/3gpp2"]
+
 
 class TestAudioResolution:
     """Tests for audio format resolution through resolve_media."""
@@ -391,6 +411,154 @@ class TestAudioResolution:
         assert normalize_mime_type(raw) == expected
 
 
+class TestVideoResolution:
+    """Tests for video format resolution through resolve_media."""
+
+    @pytest.mark.parametrize("expected", sorted(VIDEO_SAMPLES))
+    def test_video_container_detected_from_bytes(self, tmp_path, expected):
+        """Test that each deliverable video container is identified from its bytes."""
+        f = tmp_path / "no-extension"
+        f.write_bytes(VIDEO_SAMPLES[expected])
+        result = resolve_media([("video", str(f))])
+        assert result[0]["mime_type"] == expected
+        assert result[0]["kind"] == "base64"
+
+    @pytest.mark.parametrize(
+        "suffix,expected",
+        [
+            (".avi", "video/avi"),  # stdlib: video/x-msvideo, not the registered type
+            (".mov", "video/quicktime"),
+            (".mpg", "video/mpeg"),
+            (".wmv", "video/x-ms-wmv"),
+            (".flv", "video/x-flv"),
+            (".m4v", "video/mp4"),
+        ],
+    )
+    def test_video_extension_beats_host_mime_database(self, suffix, expected):
+        """Test that video extensions resolve identically whatever the host says."""
+        result = resolve_media([("video", f"https://example.com/clip{suffix}")])
+        assert result[0]["mime_type"] == expected
+
+    def test_avi_url_is_not_reported_as_unsupported(self, caplog):
+        """Test that the AVI alias is folded before the support check.
+
+        stdlib answers video/x-msvideo for .avi while the container probe answers
+        video/avi, so without folding, a file Gemini accepts warned as accepted by
+        nobody - the same class of bug as audio/x-wav, reached from the other side.
+        """
+        with caplog.at_level("WARNING"):
+            result = resolve_media([("video", "https://example.com/clip.avi")])
+        assert result[0]["mime_type"] == "video/avi"
+        assert caplog.text == ""
+
+    def test_asf_bytes_follow_the_declared_modality_without_warning(
+        self, tmp_path, caplog
+    ):
+        """Test that one ASF header serves both modalities without a false claim.
+
+        The header GUID is shared by WMV and WMA. It used to be a flat audio
+        signature, so a .wmv resolved to audio/x-ms-wma and resolve_media warned
+        that video content was "audio content" - a diagnosis naming the wrong file
+        for a container the caller described correctly.
+        """
+        f = tmp_path / "stream"
+        f.write_bytes(VIDEO_SAMPLES["video/x-ms-wmv"])
+        with caplog.at_level("WARNING"):
+            video = resolve_media([("video", str(f))])[0]
+            audio = resolve_media([("audio", str(f))])[0]
+        assert video["mime_type"] == "video/x-ms-wmv"
+        assert audio["mime_type"] == "audio/x-ms-wma"
+        assert caplog.text == ""
+
+    @pytest.mark.parametrize(
+        "brand,expected",
+        [
+            (b"qt  ", "video/quicktime"),
+            (b"3gp4", "video/3gpp"),
+            (b"isom", "video/mp4"),
+            (b"M4V ", "video/mp4"),
+        ],
+    )
+    def test_iso_bmff_brand_names_the_container(
+        self, tmp_path, caplog, brand, expected
+    ):
+        """Test that QuickTime and 3GP are not reported as MP4.
+
+        All four are ISO base media files whose headers differ only in the brand
+        field, and shipping a .mov as video/mp4 puts the wrong container in front
+        of a provider that checks.
+        """
+        f = tmp_path / "clip"
+        f.write_bytes(b"\x00\x00\x00\x18ftyp" + brand + b"\x00\x00\x00\x00")
+        with caplog.at_level("WARNING"):
+            result = resolve_media([("video", str(f))])
+        assert result[0]["mime_type"] == expected
+        assert caplog.text == ""
+
+    @pytest.mark.parametrize(
+        "declared,expected",
+        [("video", "video/mpeg"), ("audio", "audio/mpeg")],
+    )
+    def test_mpeg_suffix_follows_the_declared_modality(self, declared, expected):
+        """Test that .mpeg resolves by declaration, since it names a layer not a stream.
+
+        The suffix carries MPEG-1/2 video and MP3 audio alike. Pinning it to either
+        type would make the other reading depend on the host MIME database.
+        """
+        result = resolve_media([(declared, "https://example.com/clip.mpeg")])
+        assert result[0]["mime_type"] == expected
+
+    def test_mp3_suffix_still_warns_when_declared_video(self, caplog):
+        """Test that the unambiguous audio suffixes are not reconciled away.
+
+        Folding audio/mpeg onto video/mpeg whenever a caller declared video would
+        ship a mislabelled MP3 quietly. .mp3 is not a dual-modality spelling, so it
+        must keep contradicting its declaration.
+        """
+        with caplog.at_level("WARNING"):
+            resolve_media([("video", "https://example.com/song.mp3")])
+        assert "which is audio content" in caplog.text
+
+    def test_video_bytes_declared_as_audio_warn(self, tmp_path, caplog):
+        """Test that a video file passed as audio is reported, not reshaped."""
+        f = tmp_path / "clip.dat"
+        f.write_bytes(VIDEO_SAMPLES["video/avi"])
+        with caplog.at_level("WARNING"):
+            resolve_media([("audio", str(f))])
+        assert "which is video content" in caplog.text
+
+    @pytest.mark.parametrize("mime", sorted(UNSUPPORTED_VIDEO))
+    def test_unsupported_video_format_warns_but_is_returned(self, mime, caplog):
+        """Test that a named format no provider accepts is loud, not dropped."""
+        with caplog.at_level("WARNING"):
+            result = resolve_media([("video", f"data:{mime};base64,AAAA")])
+        assert result[0]["mime_type"] == mime
+        assert "not known to be accepted by any LLM provider" in caplog.text
+
+    @pytest.mark.parametrize("mime", sorted(SUPPORTED_MIME_TYPES["video"]))
+    def test_supported_video_does_not_warn(self, mime, caplog):
+        """Test that the advertised set resolves quietly, which keeps the warning useful."""
+        with caplog.at_level("WARNING"):
+            resolve_media([("video", f"data:{mime};base64,AAAA")])
+        assert caplog.text == ""
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("video/x-msvideo", "video/avi"),
+            ("video/msvideo", "video/avi"),
+            ("video/mov", "video/quicktime"),
+            ("video/mpg", "video/mpeg"),
+            ("video/wmv", "video/x-ms-wmv"),
+            ("video/X-M4V", "video/mp4"),
+            ("video/3gp", "video/3gpp"),
+        ],
+    )
+    def test_video_mime_aliases_fold_onto_canonical(self, raw, expected):
+        """Test that vendor and provider spellings reach the wire as one string."""
+        assert normalize_mime_type(raw) == expected
+
+
 class TestMimeTableInvariants:
     """Structural checks holding the format tables and the support claim together."""
 
@@ -426,4 +594,34 @@ class TestMimeTableInvariants:
     def test_unsupported_audio_fails_the_preflight_check(self, mime):
         """Test that being nameable is not the same as being deliverable."""
         assert is_supported_mime(mime, "audio") is False
+        assert is_supported_mime(mime) is False
+
+    def test_tables_carry_only_deliverable_video(self):
+        """Test that no video format outside the support set is known to the tables.
+
+        The audio invariant restated for video, for the same reason: an entry for a
+        container no provider takes is knowledge the framework carries but never
+        uses, and it reads as support when it is not.
+        """
+        supported = SUPPORTED_MIME_TYPES["video"]
+        for mime in _EXTENSION_MIME_TYPES.values():
+            if mime.startswith("video/"):
+                assert mime in supported, mime
+        for _, mime in _MAGIC_SIGNATURES:
+            if mime.startswith("video/"):
+                assert mime in supported, mime
+
+    def test_every_supported_video_type_is_reachable(self):
+        """Test that each advertised video format has a byte path producing it."""
+        assert set(VIDEO_SAMPLES) == SUPPORTED_MIME_TYPES["video"]
+
+    @pytest.mark.parametrize("mime", sorted(SUPPORTED_MIME_TYPES["video"]))
+    def test_supported_video_passes_the_preflight_check(self, mime):
+        """Test the preflight integrations call reports each advertised format."""
+        assert is_supported_mime(mime, "video") is True
+
+    @pytest.mark.parametrize("mime", sorted(UNSUPPORTED_VIDEO))
+    def test_unsupported_video_fails_the_preflight_check(self, mime):
+        """Test that naming a container is not the same as delivering it."""
+        assert is_supported_mime(mime, "video") is False
         assert is_supported_mime(mime) is False

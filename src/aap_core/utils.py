@@ -49,8 +49,18 @@ _MAGIC_SIGNATURES: Tuple[Tuple[bytes, str], ...] = (
     (b"fLaC", "audio/flac"),
     (b"ID3", "audio/mpeg"),  # ID3v2 tag; refined by _probe_id3_payload
     (b"#!AMR\n", "audio/amr"),
-    (b"\x30\x26\xb2\x75", "audio/x-ms-wma"),  # ASF; video streams also use it
+    # Video. Same rule as audio: only formats in SUPPORTED_MIME_TYPES appear here.
+    # ASF is deliberately absent - the container carries audio and video alike, so
+    # naming it audio here made a .wmv resolve to audio/x-ms-wma and report a
+    # modality contradiction on bytes that match what the caller declared. It is
+    # resolved by _probe_asf, which consults the declared modality like the other
+    # dual-modality probes.
+    (b"FLV\x01", "video/x-flv"),
+    (b"\x00\x00\x01\xba", "video/mpeg"),  # MPEG program-stream pack header
 )
+
+# Leading bytes of the ASF header object GUID, shared by WMV and WMA.
+_ASF_GUID = b"\x30\x26\xb2\x75"
 
 # Four-byte codes at a fixed offset that identify a container whose magic is not
 # a leading byte run. Keyed by the leading run to test, then a form/brand check.
@@ -64,6 +74,10 @@ _IFF_FORMS: Dict[bytes, str] = {
     b"AIFC": "audio/aiff",
 }
 _AUDIO_BRANDS: Tuple[bytes, ...] = (b"M4A ", b"M4B ", b"M4P ", b"M4SV")
+# QuickTime and 3GPP are ISO base media files too, but they are not MP4: shipping
+# a .mov as video/mp4 puts the wrong container in front of a provider that checks.
+_QUICKTIME_BRANDS: Tuple[bytes, ...] = (b"qt  ",)
+_THREEGP_BRANDS: Tuple[bytes, ...] = (b"3gp4", b"3gp5", b"3gp6", b"3gp7", b"3gg6")
 
 
 def _probe_riff(data: bytes) -> str | None:
@@ -97,20 +111,43 @@ def _probe_ogg(data: bytes) -> str | None:
 
 
 def _probe_iso_bmff(data: bytes, content_type: ContentType | None) -> str | None:
-    """Resolve an ISO base media file (MP4/M4A/QuickTime) by its ftyp brand.
+    """Resolve an ISO base media file (MP4/M4A/QuickTime/3GP) by its ftyp brand.
 
     The same container family carries audio and video, and a bare ".m4a"/".mp4"
     file is byte-for-byte indistinguishable in its header from a video file
     beyond the brand field. What an API must be told depends on how the caller
-    declared the media, so the declared modality wins when it is known.
+    declared the media, so the declared modality wins when it is known - except
+    where the brand names a different container outright, since QuickTime and
+    3GPP are not MP4 whatever the caller called them.
     """
     if data[4:8] != b"ftyp":
         return None
+    brand = data[8:12]
+    if brand in _QUICKTIME_BRANDS:
+        return "video/quicktime"
+    if brand in _THREEGP_BRANDS:
+        return "video/3gpp"
     if content_type == "audio":
         return "audio/mp4"
     if content_type == "video":
         return "video/mp4"
-    return "audio/mp4" if data[8:12] in _AUDIO_BRANDS else "video/mp4"
+    return "audio/mp4" if brand in _AUDIO_BRANDS else "video/mp4"
+
+
+def _probe_asf(data: bytes, content_type: ContentType | None) -> str | None:
+    """Resolve an ASF stream (WMV/WMA) by the modality the caller declared.
+
+    One header GUID covers both, and separating them means parsing the stream
+    properties for a codec URL - machinery the delivery contract does not need,
+    because what a provider must be told depends on how the media was declared,
+    exactly as for MP4 and Matroska. Undeclared falls back to audio, which is
+    the reading this table had before the video modality was wired.
+    """
+    if not data.startswith(_ASF_GUID):
+        return None
+    if content_type == "video":
+        return "video/x-ms-wmv"
+    return "audio/x-ms-wma"
 
 
 def _probe_ebml(data: bytes, content_type: ContentType | None) -> str | None:
@@ -185,6 +222,8 @@ def _sniff_mime_type(
             if signature == b"ID3":
                 return _probe_id3_payload(data) or mime_type
             return mime_type
+    if data.startswith(_ASF_GUID):
+        return _probe_asf(data, content_type)
     if data.startswith(b"RIFF"):
         return _probe_riff(data)
     if data.startswith(b"FORM"):
@@ -228,7 +267,6 @@ _EXTENSION_MIME_TYPES: Dict[str, str] = {
     ".mp3": "audio/mpeg",
     ".mp2": "audio/mpeg",
     ".mp1": "audio/mpeg",
-    ".mpeg": "audio/mpeg",
     ".wav": "audio/wav",  # stdlib: audio/x-wav
     ".wave": "audio/wav",  # stdlib: None
     ".bwf": "audio/wav",  # stdlib: None
@@ -245,6 +283,29 @@ _EXTENSION_MIME_TYPES: Dict[str, str] = {
     ".aiff": "audio/aiff",
     ".aifc": "audio/aiff",
     ".wma": "audio/x-ms-wma",
+    # Video. Entries exist only for formats in SUPPORTED_MIME_TYPES, and only where
+    # stdlib is wrong or the container is ambiguous. .mp4 and .webm are absent as
+    # dual-modality containers, resolved by sniffing or by
+    # _MODALITY_CONTAINER_TYPES instead. .mkv is absent because Matroska has no
+    # provider witness in the survey; stdlib still names it, so the
+    # unsupported-format warning fires rather than a silent claim of support.
+    # .ts is deliberately NOT pinned: this host resolves it to
+    # text/vnd.trolltech.linguist, and any pin would have to choose between
+    # MPEG transport streams and TypeScript files with the same suffix.
+    ".avi": "video/avi",  # stdlib: video/x-msvideo, not the registered type
+    ".mov": "video/quicktime",
+    ".qt": "video/quicktime",
+    ".mpg": "video/mpeg",
+    # .mpeg names a layer of the standard, not a stream kind: it is used for MP3
+    # audio and for MPEG-1/2 video alike. Pinned to the video type and reconciled
+    # to audio by declaration (below) so that both readings are deterministic on
+    # any host. .mp1/.mp2/.mp3 stay audio-only pins - those suffixes are not
+    # ambiguous, and folding them to video would ship a mislabelled MP3 quietly
+    # instead of warning.
+    ".mpeg": "video/mpeg",
+    ".m4v": "video/mp4",
+    ".flv": "video/x-flv",
+    ".wmv": "video/x-ms-wmv",
 }
 
 # Vendor and legacy spellings folded onto the canonical type after lookup. The
@@ -273,6 +334,15 @@ _MIME_ALIASES: Dict[str, str] = {
     "image/x-ms-bmp": "image/bmp",
     "image/x-icon": "image/vnd.microsoft.icon",
     "video/x-m4v": "video/mp4",
+    # Gemini names several video formats with non-registered spellings ("video/mov",
+    # "video/wmv", "video/mpg"); stdlib prefers video/x-msvideo for .avi. Folding
+    # them keeps one string on the wire whatever the source was.
+    "video/x-msvideo": "video/avi",
+    "video/msvideo": "video/avi",
+    "video/mov": "video/quicktime",
+    "video/mpg": "video/mpeg",
+    "video/wmv": "video/x-ms-wmv",
+    "video/3gp": "video/3gpp",
 }
 
 # Containers whose top-level type depends on what the media is being carried
@@ -287,6 +357,16 @@ _MODALITY_CONTAINER_TYPES: Dict[Tuple[str, str], str] = {
     ("audio/x-matroska", "video"): "video/x-matroska",
     ("application/ogg", "audio"): "audio/ogg",
     ("application/ogg", "video"): "video/ogg",
+    # 3GPP carries audio-only and video files under one suffix, and stdlib always
+    # answers audio/3gpp, so a video declared as such would otherwise be reported
+    # as contradicting its own declaration. No ASF pair here: .wma and .wmv are
+    # unambiguous spellings, and rewriting one into the other would ship a
+    # mislabelled file quietly instead of warning. The bytes case is decided by
+    # _probe_asf, where the container genuinely is ambiguous.
+    ("audio/3gpp", "video"): "video/3gpp",
+    ("video/3gpp", "audio"): "audio/3gpp",
+    ("audio/3gpp2", "video"): "video/3gpp2",
+    ("video/mpeg", "audio"): "audio/mpeg",
 }
 
 # The MIME types this framework will deliver to a model, grouped by the modality
@@ -337,17 +417,39 @@ SUPPORTED_MIME_TYPES: Dict[ContentType, frozenset] = {
             "audio/x-ms-wma",  # Qwen
         }
     ),
-    # Listed for completeness of the tables. No integration maps these to native
-    # parts yet; image is mapped in all four packages, and audio is wired through
-    # the base layer (_audio_parts) awaiting the same package-side mapping.
+    # Every entry below is accepted as a native video content part by at least one
+    # surveyed chat API. Gemini is the only provider with a published video format
+    # list, so it is the source for all eight entries (its nine spellings fold onto
+    # these types - mpg onto mpeg, mov onto quicktime, wmv onto x-ms-wmv); Qwen's
+    # DashScope API takes a video_url content part and documents it with an mp4
+    # sample but publishes no container list, so nothing rests on Qwen alone. Two
+    # exclusions follow from that standard and are worth stating:
+    #
+    #   - video/x-matroska: was listed here on the strength of a source that turned
+    #     out to document no video containers at all. .mkv still resolves to the
+    #     type through stdlib, so it is named and warned about, not claimed.
+    #   - video/ogg (.ogv) and video/3gpp2: named by stdlib, accepted by nobody
+    #     surveyed, so they stay outside the set like the pruned audio formats.
+    #
+    # Video is delivered as a container, never as frames: frame sampling is a
+    # provider-side policy (Gemini samples at 1 FPS, DashScope exposes fps and
+    # max_frames, transformers takes num_frames) and MediaReference carries bytes
+    # plus a MIME type only, so no per-part sampling option is expressible here.
     "video": frozenset(
         {
-            "video/mp4",
-            "video/webm",
-            "video/x-matroska",
-            "video/avi",
+            "video/mp4",  # Gemini, Qwen
+            "video/mpeg",  # Gemini (mpg/mpeg)
+            "video/quicktime",  # Gemini (publishes the alias "video/mov")
+            "video/avi",  # Gemini
+            "video/webm",  # Gemini
+            "video/x-flv",  # Gemini
+            "video/x-ms-wmv",  # Gemini (publishes the alias "video/wmv")
+            "video/3gpp",  # Gemini
         }
     ),
+    # Listed for completeness of the tables. No integration maps these to native
+    # parts yet; image, audio and video are mapped in the integration packages,
+    # and document is wired through the same gate without format tables.
     "document": frozenset(
         {
             "application/pdf",
