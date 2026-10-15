@@ -10,8 +10,8 @@ from sacrebleu import sentence_bleu
 
 from aap_core.types import AgentResponse
 
-from .types import AgentMessage, BaseLLMChain
 from .agent import BaseAgent
+from .types import AgentMessage, BaseLLMChain
 
 
 class ReflectionAgent(BaseAgent):

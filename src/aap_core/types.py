@@ -2,9 +2,9 @@ import abc
 import json
 import logging
 from typing import Any, Dict, List, Literal, Tuple, TypeVar, get_args
-from typing_extensions import TypedDict
 
 from pydantic import BaseModel, Field
+from typing_extensions import TypedDict
 
 from .utils import resolve_media
 
