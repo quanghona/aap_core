@@ -1,5 +1,6 @@
+import hashlib
 import re
-from typing import Any, ClassVar, List, Literal
+from typing import Any, ClassVar, Dict, List, Literal
 
 import numpy as np
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
@@ -226,22 +227,30 @@ class SimHash(BaseModel):
     def _token_hash(token: str, hash_bits: int) -> np.ndarray:
         """Compute a hash bit vector for a token.
 
-        Uses the random number generator to create a random bit vector
-        based on the token's hash value.
+        Uses a stable blake2b digest so fingerprints are deterministic across
+        processes. Python's builtin hash() is salted per-process (PYTHONHASHSEED),
+        which made deduplication results vary between runs.
         """
-        # Use Python's built-in hash combined with position for stability
-        h = hash(token)
+        h = int.from_bytes(
+            hashlib.blake2b(token.encode("utf-8"), digest_size=hash_bits // 8).digest(),
+            "little",
+        )
         bits = np.zeros(hash_bits, dtype=np.int8)
         for i in range(hash_bits):
-            # Use different bits of the hash for each position
-            bits[i] = 1 if (h >> (i % 64)) & 1 else -1
+            bits[i] = 1 if (h >> i) & 1 else -1
         return bits
 
-    def compute_hash(self, text: str) -> np.ndarray:
+    def compute_hash(
+        self, text: str, weights: Dict[str, float] | None = None
+    ) -> np.ndarray:
         """Compute the SimHash fingerprint for a text.
 
         Args:
             text: The input text to hash.
+            weights: Optional per-token weights (e.g. IDF). Tokens default to a
+                weight of 1.0 when absent. Weighting suppresses high-frequency
+                tokens (stopwords) that otherwise dominate a low-resolution
+                signature and inflate similarity between unrelated sentences.
 
         Returns:
             A numpy array of int8 values (-1 or 1) representing the fingerprint.
@@ -254,10 +263,13 @@ class SimHash(BaseModel):
         signature = np.zeros(self.hash_bits, dtype=np.float64)
 
         for token in tokens:
+            weight = 1.0 if weights is None else weights.get(token, 1.0)
+            if weight == 0.0:
+                continue
             # Get hash bits for this token
             token_hash = self._token_hash(token, self.hash_bits)
             # Add weighted contribution to signature
-            signature += token_hash.astype(np.float64)
+            signature += weight * token_hash.astype(np.float64)
 
         # Convert to fingerprint: +1 if positive, -1 if negative
         fingerprint = np.sign(signature).astype(np.int8)

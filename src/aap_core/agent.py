@@ -11,6 +11,9 @@ from .types import AgentMessage, BaseLLMChain
 class BaseAgent(abc.ABC, BaseModel):
     """An interface for agent implementations."""
 
+    # a2a-sdk >= 1.0 exposes AgentCard as a protobuf message, not a pydantic model.
+    model_config = {"arbitrary_types_allowed": True}
+
     _state: str = PrivateAttr("idle")
     _composed_state: str = PrivateAttr("idle")
 
