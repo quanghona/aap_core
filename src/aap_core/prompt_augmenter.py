@@ -1,4 +1,5 @@
 import abc
+import math
 import re
 import warnings
 from collections.abc import Callable, Sequence
@@ -263,6 +264,11 @@ class DeduplicationPromptAugmenter(BasePromptAugmenter):
             num_bands=self._algo_config.num_bands,
         )
         deduped_sentences = []
+        # LSH query() returns candidate keys (high recall, low precision); a band
+        # collision alone is not proof of duplication. Keep the inserted minhashes
+        # so each candidate can be verified against the real threshold.
+        stored: Dict[int, RMinHash] = {}
+        threshold = self._algo_config.threshold
         for sent in sentences:
             tokens = re.findall(r"\b\w+\b", sent.lower())
             if not tokens:
@@ -275,11 +281,18 @@ class DeduplicationPromptAugmenter(BasePromptAugmenter):
             mh.update(tokens)
             # query() returns a list of keys of potentially similar items
             candidates = self._dedup.query(mh)
-            if candidates:
-                # Found similar items in the index, skip this sentence
+            is_duplicate = any(
+                mh.jaccard(stored[key]) >= threshold
+                for key in candidates
+                if key in stored
+            )
+            if is_duplicate:
+                # Verified near-duplicate, skip this sentence
                 continue
             # Not a duplicate, insert it
-            self._dedup.insert(len(deduped_sentences), mh)
+            key = len(deduped_sentences)
+            self._dedup.insert(key, mh)
+            stored[key] = mh
             deduped_sentences.append(sent)
         return deduped_sentences
 
@@ -314,6 +327,17 @@ class DeduplicationPromptAugmenter(BasePromptAugmenter):
         fingerprints = []
         threshold = self._algo_config.threshold
 
+        # Smoothed IDF over the batch so common tokens ("the", "is") do not
+        # dominate the signature and inflate similarity between distinct
+        # sentences. idf = ln((1 + N) / (1 + df)) + 1 keeps weights positive.
+        token_lists = [set(re.findall(r"\b\w+\b", s.lower())) for s in sentences]
+        n_docs = sum(1 for t in token_lists if t)
+        df: Dict[str, int] = {}
+        for toks in token_lists:
+            for tok in toks:
+                df[tok] = df.get(tok, 0) + 1
+        idf = {tok: math.log((1 + n_docs) / (1 + c)) + 1 for tok, c in df.items()}
+
         for sent in sentences:
             tokens = re.findall(r"\b\w+\b", sent.lower())
             if not tokens:
@@ -321,7 +345,8 @@ class DeduplicationPromptAugmenter(BasePromptAugmenter):
                 fingerprints.append(None)
                 continue
 
-            fp = self._dedup.compute_hash(sent)
+            weights = {tok: idf.get(tok, 1.0) for tok in tokens}
+            fp = self._dedup.compute_hash(sent, weights)
             is_duplicate = False
 
             # Compare with all existing fingerprints
