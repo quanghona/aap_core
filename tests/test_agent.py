@@ -1,6 +1,6 @@
 """Tests for aap_core.agent module - BaseAgent."""
 
-from a2a.types import AgentCard
+from a2a.types import AgentCard, AgentInterface
 from aap_core.agent import BaseAgent
 from aap_core.types import AgentMessage
 
@@ -13,7 +13,13 @@ def _make_agent_card(name: str = "test_agent") -> AgentCard:
         skills=[],
         default_input_modes=[],
         default_output_modes=[],
-        url="http://localhost:8000",
+        supported_interfaces=[
+            AgentInterface(
+                url="http://localhost:8000",
+                protocol_binding="JSONRPC",
+                protocol_version="1.0",
+            )
+        ],
         version="1.0.0",
     )
 
@@ -194,7 +200,7 @@ class TestBaseAgent:
         # Pydantic models don't allow arbitrary attributes, so we test via construction
         child1 = SimpleAgent(card=_make_agent_card("child1"))
         child2 = SimpleAgent(card=_make_agent_card("child2"))
-        parent = SimpleAgent(card=_make_agent_card("parent"))
+        SimpleAgent(card=_make_agent_card("parent"))
         # The __value_deco is called during __init__ for each field
         assert child1.state == "idle"
         assert child2.state == "idle"
@@ -204,7 +210,7 @@ class TestBaseAgent:
         # Pydantic models don't allow arbitrary attributes, so we test via construction
         child1 = SimpleAgent(card=_make_agent_card("child1"))
         child2 = SimpleAgent(card=_make_agent_card("child2"))
-        parent = SimpleAgent(card=_make_agent_card("parent"))
+        SimpleAgent(card=_make_agent_card("parent"))
         # The __value_deco is called during __init__ for each field
         assert child1.state == "idle"
         assert child2.state == "idle"

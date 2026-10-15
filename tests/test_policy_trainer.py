@@ -10,6 +10,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim
 import torch.optim.lr_scheduler
+from gymnasium import spaces
+
 from aap_core import SimpleReplayBuffer
 from aap_core.policy import BasePolicy, GPT2Policy
 from aap_core.policy_trainer import (
@@ -19,7 +21,6 @@ from aap_core.policy_trainer import (
     ReinforcePPTrainer,
 )
 from aap_core.prompt_augmenter import IdentityPromptAugmenter, PromptOptimizationEnv
-from gymnasium import spaces
 
 
 class SimplePolicy(BasePolicy):
@@ -1868,7 +1869,7 @@ class TestGRPOInvalidInputs:
                 batch["rewards"],
                 batch["masks"],
                 batch["old_log_probs"],
-            None,
+                None,
             )
 
     def test_mismatched_tensor_shapes(self):
@@ -1923,7 +1924,7 @@ class TestGRPOInvalidInputs:
                 batch["rewards"],
                 batch["masks"],
                 batch["old_log_probs"],
-            None,
+                None,
             )
 
     def test_invalid_action_indices(self):
@@ -1978,7 +1979,7 @@ class TestGRPOInvalidInputs:
                 batch["rewards"],
                 batch["masks"],
                 batch["old_log_probs"],
-            None,
+                None,
             )
 
     def test_all_masks_zero(self):
@@ -6887,7 +6888,6 @@ class TestGRPOOffPolicy:
         assert not torch.isnan(torch.tensor(entropy))
 
 
-
 class TestPPOOffPolicy:
     """Test off-policy PPO functionality."""
 
@@ -7108,7 +7108,9 @@ class TestPPOOffPolicy:
             if not torch.equal(initial_params[name], param):
                 params_changed = True
                 break
-        assert params_changed, "Policy parameters were not updated after off-policy training"
+        assert params_changed, (
+            "Policy parameters were not updated after off-policy training"
+        )
 
     def test_tis_cap_bounds_importance_sampling(self):
         """Test that TIS cap correctly bounds the importance sampling ratio."""

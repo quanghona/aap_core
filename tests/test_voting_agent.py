@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from a2a.types import AgentCard
+from a2a.types import AgentCard, AgentInterface
 from aap_core.agent import BaseAgent
 from aap_core.orchestration import VotingAgent
 from aap_core.types import AgentMessage
@@ -16,7 +16,13 @@ def agent_card(name: str = "test_agent") -> AgentCard:
         skills=[],
         default_input_modes=[],
         default_output_modes=[],
-        url="http://localhost:8000",
+        supported_interfaces=[
+            AgentInterface(
+                url="http://localhost:8000",
+                protocol_binding="JSONRPC",
+                protocol_version="1.0",
+            )
+        ],
         version="1.0.0",
     )
 
@@ -39,7 +45,13 @@ class MockAgent(BaseAgent):
             skills=[],
             default_input_modes=[],
             default_output_modes=[],
-            url="http://localhost:8000",
+            supported_interfaces=[
+                AgentInterface(
+                    url="http://localhost:8000",
+                    protocol_binding="JSONRPC",
+                    protocol_version="1.0",
+                )
+            ],
             version="1.0.0",
         )
         super().__init__(card=card, **kwargs)
@@ -62,7 +74,13 @@ class MockChainAgent(BaseAgent):
             skills=[],
             default_input_modes=[],
             default_output_modes=[],
-            url="http://localhost:8000",
+            supported_interfaces=[
+                AgentInterface(
+                    url="http://localhost:8000",
+                    protocol_binding="JSONRPC",
+                    protocol_version="1.0",
+                )
+            ],
             version="1.0.0",
         )
         super().__init__(card=card, **kwargs)
@@ -94,7 +112,13 @@ def _make_voting_agent(
         skills=[],
         default_input_modes=[],
         default_output_modes=[],
-        url="http://localhost:8000",
+        supported_interfaces=[
+            AgentInterface(
+                url="http://localhost:8000",
+                protocol_binding="JSONRPC",
+                protocol_version="1.0",
+            )
+        ],
         version="1.0.0",
     )
     kwargs: dict = dict(

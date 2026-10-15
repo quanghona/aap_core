@@ -1,7 +1,7 @@
 """Tests for aap_core.orchestration module - ReflectionAgent, LoopAgent, SequentialAgent, ParallelAgent, DebateAgent."""
 
 import pytest
-from a2a.types import AgentCard
+from a2a.types import AgentCard, AgentInterface
 from aap_core.agent import BaseAgent
 from aap_core.orchestration import (
     DebateAgent,
@@ -21,7 +21,13 @@ def _make_agent_card(name: str = "test_agent") -> AgentCard:
         skills=[],
         default_input_modes=[],
         default_output_modes=[],
-        url="http://localhost:8000",
+        supported_interfaces=[
+            AgentInterface(
+                url="http://localhost:8000",
+                protocol_binding="JSONRPC",
+                protocol_version="1.0",
+            )
+        ],
         version="1.0.0",
     )
 

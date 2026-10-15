@@ -26,8 +26,12 @@ class TestPromptOptimizationEnv:
     def test_initialization_with_default_values(self):
         """Test environment initialization with default values."""
         augmenters = [IdentityPromptAugmenter()]
-        embedding_model = lambda x: np.zeros(768, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(768, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="test",
@@ -46,8 +50,12 @@ class TestPromptOptimizationEnv:
             IdentityPromptAugmenter(),
             SimplePromptAugmenter(format="{query} {data}", data_key="context.data"),
         ]
-        embedding_model = lambda x: np.ones(128, dtype=np.float32)
-        reward_model = lambda x: 1.0
+
+        def embedding_model(x):
+            return np.ones(128, dtype=np.float32)
+
+        def reward_model(x):
+            return 1.0
 
         env = PromptOptimizationEnv(
             initial_prompt="Hello",
@@ -65,8 +73,12 @@ class TestPromptOptimizationEnv:
     def test_action_space_is_discrete(self):
         """Test that action space is Discrete."""
         augmenters = [IdentityPromptAugmenter() for _ in range(5)]
-        embedding_model = lambda x: np.zeros(100, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(100, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="test",
@@ -83,8 +95,12 @@ class TestPromptOptimizationEnv:
     def test_observation_space_is_box(self):
         """Test that observation space is Box."""
         augmenters = [IdentityPromptAugmenter()]
-        embedding_model = lambda x: np.zeros(256, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(256, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             augmenters=augmenters,
@@ -102,8 +118,12 @@ class TestPromptOptimizationEnv:
     def test_reset_returns_observation_and_info(self):
         """Test that reset returns observation and info."""
         augmenters = [IdentityPromptAugmenter()]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             augmenters=augmenters,
@@ -124,8 +144,12 @@ class TestPromptOptimizationEnv:
     def test_reset_resets_state(self):
         """Test that reset properly resets the environment state."""
         augmenters = [DummyAugmenter(suffix=" test")]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="Test",
@@ -155,8 +179,12 @@ class TestPromptOptimizationEnv:
     def test_step_with_valid_action(self):
         """Test step with a valid action."""
         augmenters = [DummyAugmenter(suffix=" world")]
-        embedding_model = lambda x: np.ones(10, dtype=np.float32)
-        reward_model = lambda x: 1.0 if "world" in x else 0.0
+
+        def embedding_model(x):
+            return np.ones(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 1.0 if "world" in x else 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="Hello",
@@ -184,8 +212,12 @@ class TestPromptOptimizationEnv:
             DummyAugmenter(suffix="?"),
             DummyAugmenter(suffix="."),
         ]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: float(len(x))
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return float(len(x))
 
         env = PromptOptimizationEnv(
             initial_prompt="Hi",
@@ -210,8 +242,12 @@ class TestPromptOptimizationEnv:
     def test_step_with_invalid_action(self):
         """Test step with an invalid action."""
         augmenters = [IdentityPromptAugmenter()]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="test",
@@ -236,8 +272,12 @@ class TestPromptOptimizationEnv:
                 raise Exception("Augmenter failed")
 
         augmenters = [FailingAugmenter()]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="Test",
@@ -256,8 +296,12 @@ class TestPromptOptimizationEnv:
     def test_step_with_max_steps_truncation(self):
         """Test step with max_steps truncation."""
         augmenters = [DummyAugmenter(suffix=" step")]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="Test",
@@ -281,7 +325,9 @@ class TestPromptOptimizationEnv:
     def test_reward_model_called_correctly(self):
         """Test that reward model is called with the correct prompt."""
         augmenters = [DummyAugmenter(suffix=" test")]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
 
         reward_calls = []
 
@@ -303,8 +349,12 @@ class TestPromptOptimizationEnv:
     def test_identity_augmenter_terminates_episode(self):
         """Test that selecting IdentityPromptAugmenter terminates the episode immediately."""
         augmenters = [IdentityPromptAugmenter()]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="Test",
@@ -331,8 +381,12 @@ class TestPromptOptimizationEnv:
             IdentityPromptAugmenter(),
             DummyAugmenter(suffix="?"),
         ]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="Test",
@@ -360,7 +414,9 @@ class TestPromptOptimizationEnv:
     def test_identity_augmenter_does_not_call_reward_model(self):
         """Test that reward model is not called when IdentityPromptAugmenter terminates."""
         augmenters = [IdentityPromptAugmenter()]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
 
         reward_called = []
 
@@ -385,8 +441,12 @@ class TestPromptOptimizationEnv:
         """Test that step with IdentityPromptAugmenter returns the current embedding."""
         augmenters = [IdentityPromptAugmenter()]
         expected_embedding = np.array([1.0, 2.0, 3.0], dtype=np.float32)
-        embedding_model = lambda x: expected_embedding
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return expected_embedding
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="Test",
@@ -411,7 +471,8 @@ class TestPromptOptimizationEnv:
             embedding_calls.append(prompt)
             return np.zeros(10, dtype=np.float32)
 
-        reward_model = lambda x: 0.0
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="Hello",
@@ -436,7 +497,8 @@ class TestPromptOptimizationEnv:
                 return np.ones(10, dtype=np.float32)
             return np.zeros(10, dtype=np.float32)
 
-        reward_model = lambda x: 0.0
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="test",
@@ -451,8 +513,12 @@ class TestPromptOptimizationEnv:
     def test_get_info(self):
         """Test _get_info method."""
         augmenters = [IdentityPromptAugmenter()]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="test",
@@ -475,8 +541,12 @@ class TestPromptOptimizationEnv:
     def test_metadata(self):
         """Test environment metadata."""
         augmenters = [IdentityPromptAugmenter()]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="test",
@@ -491,8 +561,12 @@ class TestPromptOptimizationEnv:
     def test_no_render_mode_parameter(self):
         """Test that render_mode parameter is not used."""
         augmenters = [IdentityPromptAugmenter()]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         # render_mode is no longer a parameter
         env = PromptOptimizationEnv(
@@ -507,8 +581,12 @@ class TestPromptOptimizationEnv:
     def test_seed_reproducibility(self):
         """Test that seeding produces reproducible results."""
         augmenters = [IdentityPromptAugmenter()]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env1 = PromptOptimizationEnv(
             initial_prompt="test",
@@ -531,8 +609,12 @@ class TestPromptOptimizationEnv:
     def test_multiple_episodes(self):
         """Test multiple consecutive episodes."""
         augmenters = [DummyAugmenter(suffix="!")]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 1.0 if "!" in x else 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 1.0 if "!" in x else 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="Start",
@@ -565,7 +647,8 @@ class TestPromptOptimizationEnv:
         def embedding_model(prompt):
             return np.zeros(10, dtype=np.float64)  # Return float64
 
-        reward_model = lambda x: 0.0
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             initial_prompt="test",
@@ -580,8 +663,12 @@ class TestPromptOptimizationEnv:
     def test_observation_copy(self):
         """Test that observation is a copy, not a reference."""
         augmenters = [IdentityPromptAugmenter()]
-        embedding_model = lambda x: np.zeros(10, dtype=np.float32)
-        reward_model = lambda x: 0.0
+
+        def embedding_model(x):
+            return np.zeros(10, dtype=np.float32)
+
+        def reward_model(x):
+            return 0.0
 
         env = PromptOptimizationEnv(
             augmenters=augmenters,
