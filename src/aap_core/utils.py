@@ -6,7 +6,9 @@ import mimetypes
 import re
 from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Sequence, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Sequence, Tuple
+
+from a2a.types import AgentCapabilities
 
 if TYPE_CHECKING:
     from .types import ContentType, MediaReference
@@ -654,6 +656,44 @@ def resolve_media(
             }
         )
     return refs
+
+
+def agent_capabilities(
+    streaming: bool = False,
+    push_notifications: bool = False,
+    extensions: Sequence[Any] | None = None,
+    extended_agent_card: bool = False,
+) -> AgentCapabilities:
+    """Build the a2a ``AgentCard.capabilities`` field for an agent.
+
+    This is the *transport* capability declaration of an agent card: whether the
+    agent's server can stream responses (SSE), accept push-notification (webhook)
+    updates, declares protocol extensions, or exposes an authenticated extended
+    card. It is unrelated to the media-modality capabilities reported by
+    ``BaseLLMChain.detect_capabilities`` (image/audio/video/document), which feed
+    ``default_input_modes``/``default_output_modes`` instead.
+
+    The defaults are all-False because an in-process ``BaseAgent`` implements none
+    of these transports: ``aexecute`` is async execution, not SSE streaming, and
+    ``state_change_callback`` is an in-process hook, not a webhook. Flip a flag to
+    True only when the agent is actually hosted behind an a2a server that
+    implements it, so clients are never advertised a transport that then stalls.
+
+    Args:
+        streaming: Server supports streaming (SSE) task responses.
+        push_notifications: Server supports push-notification (webhook) updates.
+        extensions: Declared ``AgentExtension`` entries for protocol extensions.
+        extended_agent_card: An authenticated extended agent card is available.
+
+    Returns:
+        AgentCapabilities: A populated capabilities message for ``AgentCard``.
+    """
+    return AgentCapabilities(
+        streaming=streaming,
+        push_notifications=push_notifications,
+        extensions=list(extensions) if extensions else [],
+        extended_agent_card=extended_agent_card,
+    )
 
 
 # --- Hugging Face model-card capability detection (framework-agnostic) ---

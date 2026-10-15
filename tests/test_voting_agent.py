@@ -5,6 +5,7 @@ from a2a.types import AgentCard, AgentInterface
 from aap_core.agent import BaseAgent
 from aap_core.orchestration import VotingAgent
 from aap_core.types import AgentMessage
+from aap_core.utils import agent_capabilities
 
 
 @pytest.fixture
@@ -12,7 +13,7 @@ def agent_card(name: str = "test_agent") -> AgentCard:
     return AgentCard(
         name=name,
         description=f"Test agent {name}",
-        capabilities={},
+        capabilities=agent_capabilities(),
         skills=[],
         default_input_modes=[],
         default_output_modes=[],
@@ -41,7 +42,7 @@ class MockAgent(BaseAgent):
         card = AgentCard(
             name=name,
             description=f"Mock agent {name}",
-            capabilities={},
+            capabilities=agent_capabilities(),
             skills=[],
             default_input_modes=[],
             default_output_modes=[],
@@ -70,7 +71,7 @@ class MockChainAgent(BaseAgent):
         card = AgentCard(
             name=name,
             description=f"Chain agent {name}",
-            capabilities={},
+            capabilities=agent_capabilities(),
             skills=[],
             default_input_modes=[],
             default_output_modes=[],
@@ -108,7 +109,7 @@ def _make_voting_agent(
     card = AgentCard(
         name="voting_agent",
         description="Voting agent",
-        capabilities={},
+        capabilities=agent_capabilities(),
         skills=[],
         default_input_modes=[],
         default_output_modes=[],

@@ -3,13 +3,14 @@
 from a2a.types import AgentCard, AgentInterface
 from aap_core.agent import BaseAgent
 from aap_core.types import AgentMessage
+from aap_core.utils import agent_capabilities
 
 
 def _make_agent_card(name: str = "test_agent") -> AgentCard:
     return AgentCard(
         name=name,
         description=f"Test agent {name}",
-        capabilities={},
+        capabilities=agent_capabilities(),
         skills=[],
         default_input_modes=[],
         default_output_modes=[],
