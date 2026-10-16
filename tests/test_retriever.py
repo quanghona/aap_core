@@ -4,6 +4,7 @@ import json
 
 import pandas as pd
 import pytest
+import toon_format
 from aap_core.retriever import DataFrameRetriever
 from aap_core.types import AgentMessage
 
@@ -69,6 +70,15 @@ class TestDataFrameRetrieverFromPandas:
         # Just verify the data was converted and stored
         assert retriever._data != ""
 
+    def test_from_pandas_with_toon_prettier(self):
+        """Test from_pandas with the toon prettier encodes records losslessly."""
+        df = pd.DataFrame({"name": ["Alice", "Bob"], "age": [25, 30]})
+        retriever = DataFrameRetriever.from_pandas(df, prettier="toon")
+        assert retriever._data is not None
+        assert "Alice" in retriever._data
+        # TOON round-trips back to the records the dataframe was encoded from.
+        assert toon_format.decode(retriever._data) == df.to_dict(orient="records")
+
     def test_from_pandas_with_custom_data_key(self):
         """Test from_pandas with a custom data_key."""
         df = pd.DataFrame({"name": ["Alice"]})
@@ -130,6 +140,14 @@ class TestDataFrameRetrieverFromDict:
         retriever = DataFrameRetriever.from_dict(data, prettier="simple")
         assert retriever._data is not None
         assert "Alice" in retriever._data
+
+    def test_from_dict_with_toon_prettier(self):
+        """Test from_dict with the toon prettier encodes the dict losslessly."""
+        data = {"name": ["Alice", "Bob"], "age": [25, 30]}
+        retriever = DataFrameRetriever.from_dict(data, prettier="toon")
+        assert retriever._data is not None
+        assert "Alice" in retriever._data
+        assert toon_format.decode(retriever._data) == data
 
     def test_from_dict_with_custom_data_key(self):
         """Test from_dict with a custom data_key."""

@@ -5,6 +5,7 @@ from collections.abc import Iterable
 
 import pandas as pd
 import tabulate
+import toon_format
 from pydantic import Field, PrivateAttr, field_validator
 
 from aap_core.types import AgentMessage, BaseChain
@@ -85,8 +86,8 @@ class DataFrameRetriever(BaseRetriever):
         retriever = DataFrameRetriever(data_key=data_key)
         if prettier is None:
             retriever._data = data.to_string(**kwargs)
-        # elif prettier == "toon":      # toon_format currently is beta release, waiting 1.0.0 release
-        #     retriever._data = toon_format.encode(data.to_dict())
+        elif prettier == "toon":
+            retriever._data = toon_format.encode(data.to_dict(orient="records"))
         else:
             retriever._data = tabulate.tabulate(
                 data.to_dict(), tablefmt=prettier, **kwargs
@@ -140,8 +141,8 @@ class DataFrameRetriever(BaseRetriever):
         retriever = DataFrameRetriever(data_key=data_key)
         if prettier is None:
             retriever._data = str(data)
-        # elif prettier == "toon":      # toon_format currently is beta release, waiting 1.0.0 release
-        #     retriever._data = toon_format.encode(data.to_dict())
+        elif prettier == "toon":
+            retriever._data = toon_format.encode(data)
         else:
             retriever._data = tabulate.tabulate(data, tablefmt=prettier, **kwargs)
 

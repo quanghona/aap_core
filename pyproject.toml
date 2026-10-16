@@ -21,6 +21,7 @@ dependencies = [
     "torch",
     "rensa>=0.4.0",
     "rbloom>=1.5.4",
+    "toon-format>=1.0.0",
 ]
 classifiers = [
     "Programming Language :: Python :: 3.10",
