@@ -1,3 +1,4 @@
+from aap_core.orchestration import LoopAgent, VotingAgent
 from .types import AgentMessage, BaseChain, BaseLLMChain
 from pydantic import Field
 
