@@ -44,6 +44,11 @@ jobs:
       - name: Ruff format check
         run: uv run ruff format --check .
 
+      # NLTK 3.9+ requires punkt_tab for nltk.sent_tokenize; the package
+      # data is not installed by pip/uv with the NLTK Python dependency.
+      - name: Download NLTK punkt_tab data
+        run: uv run python -m nltk.downloader punkt_tab
+
       # ---------- 3. Tests ----------
       - name: Run tests
         run: uv run pytest tests -v

@@ -1,6 +1,43 @@
+import nltk
 import pytest
-from aap_core.prompt_augmenter import DeduplicationPromptAugmenter
+from aap_core.prompt_augmenter import DeduplicationPromptAugmenter, _sent_tokenize
 from aap_core.types import AgentMessage
+
+
+class TestSentenceTokenizerSetup:
+    def test_downloads_punkt_tab_and_retries(self, monkeypatch):
+        calls = []
+
+        def missing_then_tokenize(text):
+            calls.append(text)
+            if len(calls) == 1:
+                raise LookupError("Resource 'punkt_tab' not found")
+            return [text]
+
+        downloads = []
+        monkeypatch.setattr(nltk, "sent_tokenize", missing_then_tokenize)
+        monkeypatch.setattr(
+            nltk,
+            "download",
+            lambda package, quiet: downloads.append((package, quiet)) or True,
+        )
+
+        assert _sent_tokenize("Sentence.") == ["Sentence."]
+        assert downloads == [("punkt_tab", True)]
+        assert calls == ["Sentence.", "Sentence."]
+
+    def test_reports_failed_punkt_tab_download(self, monkeypatch):
+        monkeypatch.setattr(
+            nltk,
+            "sent_tokenize",
+            lambda text: (_ for _ in ()).throw(
+                LookupError("Resource 'punkt_tab' not found")
+            ),
+        )
+        monkeypatch.setattr(nltk, "download", lambda package, quiet: False)
+
+        with pytest.raises(LookupError, match="could not be downloaded"):
+            _sent_tokenize("Sentence.")
 
 
 class TestDeduplicationPromptAugmenter:

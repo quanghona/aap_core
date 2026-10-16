@@ -33,6 +33,22 @@ from .policy import BasePolicy
 from .types import AgentMessage, BaseChain, BaseLLMChain
 
 
+def _sent_tokenize(text: str) -> List[str]:
+    try:
+        return nltk.sent_tokenize(text)
+    except LookupError as error:
+        if "punkt_tab" not in str(error):
+            raise
+
+        if not nltk.download("punkt_tab", quiet=True):
+            raise LookupError(
+                "NLTK resource 'punkt_tab' is missing and could not be downloaded. "
+                "Check network access or run `python -m nltk.downloader punkt_tab`."
+            ) from error
+
+        return nltk.sent_tokenize(text)
+
+
 class BasePromptAugmenter(BaseChain):
     """A base class to enhance / rewrite the prompt.
 
@@ -459,7 +475,7 @@ class DeduplicationPromptAugmenter(BasePromptAugmenter):
         if not message.query:
             return message
 
-        sentences = nltk.sent_tokenize(message.query.strip())
+        sentences = _sent_tokenize(message.query.strip())
         deduped_sentences = self._dedup_func(sentences)
         message.query = " ".join(deduped_sentences)
         return message
@@ -1519,7 +1535,7 @@ class PromptOptimizationEnv(gym.Env):
             return 0.0
 
         # Tokenize into sentences
-        sentences = nltk.sent_tokenize(text.strip())
+        sentences = _sent_tokenize(text.strip())
         if len(sentences) <= 1:
             return 0.0
 
