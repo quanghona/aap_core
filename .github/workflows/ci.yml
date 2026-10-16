@@ -1,0 +1,89 @@
+name: Build test and deploy
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write # GitHub Release
+  security-events: write # CodeQL SARIF upload
+
+env:
+  PYTHON_VERSION: "3.10" # minimum supported version
+
+jobs:
+  pipeline:
+    name: Lint / Test / Scan / Build / Release / Deploy
+    runs-on: ubuntu-latest
+    steps:
+      # ---------- 1. Environment ----------
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        # --no-sources: [tool.uv.sources] pins torch to a local aarch64 wheel
+        # (/data/install/...) which does not exist on x86_64 runners.
+        # Ignoring sources makes uv resolve torch from PyPI instead.
+        run: uv sync --no-sources --group dev --group lint
+
+      # ---------- 2. Lint ----------
+      - name: Ruff check
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      # ---------- 3. Tests ----------
+      - name: Run tests
+        run: uv run pytest tests -v
+
+      # ---------- 4. CodeQL security scan ----------
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+
+      - name: Analyze with CodeQL
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"
+
+      # ---------- 5. Build ----------
+      - name: Build package
+        run: uv build
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      # ---------- 6. GitHub Release ----------
+      # - name: Publish GitHub Release
+      #   env:
+      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #   run: |
+      #     VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)"/\1/')
+      #     if gh release view "v${VERSION}" >/dev/null 2>&1; then
+      #       gh release upload "v${VERSION}" dist/* --clobber
+      #     else
+      #       gh release create "v${VERSION}" dist/* \
+      #         --title "v${VERSION}" --generate-notes
+      #     fi
+
+      # # ---------- 7. PyPI ----------
+      # - name: Publish to PyPI
+      #   uses: pypa/gh-action-pypi-publish@release/v1
+      #   with:
+      #     password: ${{ secrets.PYPI_API_TOKEN }}
