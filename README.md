@@ -2,7 +2,6 @@
 
 Agent design pattern core framework for building, orchestrating, and training AI agents.
 
-![PyPI - License](https://img.shields.io/pypi/l/aap_core)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/aap_core)
 ![PyPI - Version](https://img.shields.io/pypi/v/aap_core?label=%20)
 ![Python Version](https://img.shields.io/pypi/pyversions/aap_core)
@@ -145,11 +144,10 @@ trainer.train(env, num_steps=10000)
 | `agent` | Base agent interface with A2A `AgentCard` support and state management |
 | `orchestration` | Multi-agent patterns: reflection, looping, voting, coordination, debate |
 | `chain` | Generic multi-turn causal chains with history, tool processing, and token tracking |
-| `policy` | RL policy models (GPT-2 based) with RMSNorm, RoPE, and GQA |
+| `policy` | RL policy models |
 | `policy_trainer` | Replay buffers, exploration modules, and trainers (PPO, DPO, GRPO, Reinforce++) |
 | `prompt_augmenter` | Data and structure-based prompt enhancement with Gymnasium environments |
 | `retriever` | Pluggable retrieval system with post-processing support |
-| `thought` | Thought chain patterns: CoT, ToT, GoT, Self-Consistency |
 | `guardrail` | Input/output filtering system |
 | `types` | Core type definitions: `AgentMessage`, `TokenUsage`, `BaseLLMChain`, `BaseChain` |
 | `utils` | Utility functions (e.g., thinking tag removal) |
