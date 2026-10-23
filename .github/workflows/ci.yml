@@ -4,13 +4,26 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+  # Called by publish_pypi.yml. There is no cross-workflow `needs` in GitHub
+  # Actions, so reusing the validate/build jobs for a release gate has to go
+  # through workflow_call rather than a job reference. Renaming or removing
+  # this trigger breaks the release workflow.
+  workflow_call:
+    inputs:
+      gate_only:
+        description: >-
+          Run only Lint/Test/Scan and Build, skipping the TestPyPI deploy and
+          its smoke test. Set by publish_pypi.yml, which publishes to real PyPI
+          and must not touch TestPyPI on the release path.
+        type: boolean
+        default: false
 
 env:
   PYTHON_VERSION: "3.10" # minimum supported version
 
 jobs:
-  pipeline:
-    name: Lint / Test / Scan
+  validate:
+    name: Lint, Test and Scan
     runs-on: ubuntu-latest
     permissions:
       security-events: write # CodeQL SARIF upload
@@ -63,13 +76,10 @@ jobs:
         with:
           category: "/language:python"
 
-  build-deploy:
-    name: Build / Deploy
+  build:
+    name: Build
     runs-on: ubuntu-latest
-    needs: pipeline
-    permissions:
-      contents: write # GitHub Release
-      id-token: write # mandatory for OIDC trusted publishing
+    needs: validate
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -89,25 +99,33 @@ jobs:
         run: uv build
 
       - name: Upload dist artifacts
+        # Consumed by publish_pypi.yml when this workflow runs as a reusable
+        # call: artifacts are scoped to the whole run, so the release job
+        # downloads this one by name. Do not rename it casually.
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
 
-      # ---------- 6. GitHub Release ----------
-      # - name: Publish GitHub Release
-      #   env:
-      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #   run: |
-      #     VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)"/\1/')
-      #     if gh release view "v${VERSION}" >/dev/null 2>&1; then
-      #       gh release upload "v${VERSION}" dist/* --clobber
-      #     else
-      #       gh release create "v${VERSION}" dist/* \
-      #         --title "v${VERSION}" --generate-notes
-      #     fi
+  deploy-test:
+    name: Deploy to TestPyPI
+    runs-on: ubuntu-latest
+    needs: build
+    # `!= true` rather than `!inputs.gate_only`: on a push trigger the inputs
+    # context is empty, and comparing against true keeps that path running.
+    # When this job is skipped, test-pypi skips too via its `needs`.
+    if: ${{ inputs.gate_only != true }}
+    permissions:
+      contents: write # GitHub Release
+      id-token: write # mandatory for OIDC trusted publishing
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
 
-      # ---------- 7. Test PyPI ----------
+      # ---------- 6. Test PyPI ----------
       # Trusted publishing (OIDC): no password. Setting a password would force
       # token auth and silently bypass the trusted publisher configured on TestPyPI.
       # skip-existing is intentional here: PyPI/TestPyPI reject a filename that was
@@ -122,7 +140,7 @@ jobs:
   test-pypi:
     name: Test TestPyPI package
     runs-on: ubuntu-latest
-    needs: build-deploy
+    needs: deploy-test
     steps:
       - name: Wait for TestPyPI propagation
         run: sleep 30
