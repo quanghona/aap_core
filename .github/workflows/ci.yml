@@ -100,6 +100,25 @@ jobs:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true
 
+  test-pypi:
+    name: Test TestPyPI package
+    runs-on: ubuntu-latest
+    needs: pipeline
+    steps:
+      - name: Wait for TestPyPI propagation
+        run: sleep 30
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
       - name: Test PyPI package installation
         # Installs WITH dependencies: aap_core/__init__.py imports policy_trainer,
         # which imports torch/wandb at module level, so a --no-deps install cannot
