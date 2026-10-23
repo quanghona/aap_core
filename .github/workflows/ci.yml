@@ -10,12 +10,10 @@ env:
 
 jobs:
   pipeline:
-    name: Lint / Test / Scan / Build / Release / Deploy
+    name: Lint / Test / Scan
     runs-on: ubuntu-latest
     permissions:
-      contents: write # GitHub Release
       security-events: write # CodeQL SARIF upload
-      id-token: write # mandatory for OIDC trusted publishing
     steps:
       # ---------- 1. Environment ----------
       - name: Checkout
@@ -65,6 +63,27 @@ jobs:
         with:
           category: "/language:python"
 
+  build-deploy:
+    name: Build / Deploy
+    runs-on: ubuntu-latest
+    needs: pipeline
+    permissions:
+      contents: write # GitHub Release
+      id-token: write # mandatory for OIDC trusted publishing
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
       # ---------- 5. Build ----------
       - name: Build package
         run: uv build
@@ -103,7 +122,7 @@ jobs:
   test-pypi:
     name: Test TestPyPI package
     runs-on: ubuntu-latest
-    needs: pipeline
+    needs: build-deploy
     steps:
       - name: Wait for TestPyPI propagation
         run: sleep 30
@@ -129,7 +148,6 @@ jobs:
           uv venv /tmp/smoke --python "$PYTHON_VERSION"
           uv pip install --python /tmp/smoke \
             --index-url https://test.pypi.org/simple/ \
-            --extra-index-url https://pypi.org/simple \
             "aap-core==${VERSION}"
           # Assert the package exposes __version__ and it matches pyproject.toml.
           /tmp/smoke/bin/python -c "import aap_core; assert aap_core.__version__ == '${VERSION}', aap_core.__version__; print('aap_core', aap_core.__version__)"
