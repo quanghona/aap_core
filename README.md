@@ -8,7 +8,7 @@ Agent design pattern core framework for building, orchestrating, and training AI
 
 ## What is this?
 
-`aap_core` is the foundational framework within the **AI Agent Pattern** project. It provides a unified abstraction layer for building AI agents, orchestrating multi-agent workflows, and training policies via reinforcement learning — all built on Pydantic and compatible with the [A2A protocol](https://github.com/google/a2a-sdk).
+`aap_core` is the foundational framework within the **AI Agent Pattern** project. It provides a unified abstraction layer for building AI agents, orchestrating multi-agent workflows, and training policies via reinforcement learning — all built on Pydantic and compatible with the [A2A protocol](https://a2a-protocol.org/) v1.0 (`a2a-sdk>=1.0.0`).
 
 The framework separates orchestration logic from LLM manipulation, delegating model interaction to integration packages (`aap_langchain`, `aap_llamaindex`, `aap_dspy`, `aap_transformers`). This lets you swap backends without changing agent architecture.
 
@@ -156,7 +156,7 @@ trainer.train(env, num_steps=10000)
 
 - Full project documentation: [aap_core docs](https://github.com/quanghona/aap_core)
 - Example notebooks: [example](https://github.com/quanghona/aap_example.git)
-- A2A Protocol: [google/a2a-sdk](https://github.com/google/a2a-sdk)
+- A2A Protocol: [a2a-protocol.org](https://a2a-protocol.org/) · Python SDK [a2aproject/a2a-python](https://github.com/a2aproject/a2a-python)
 
 ## Contributing
 
