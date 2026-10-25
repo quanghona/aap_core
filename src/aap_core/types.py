@@ -28,6 +28,26 @@ GATED_MODALITIES: Tuple[ContentType, ...] = tuple(
 )
 
 
+def _template_value(value: Any) -> Any:
+    """Render one value for str.format interpolation without leaking a Python repr.
+
+    A list of strings is what retrievers store multi-hit context as, and
+    str.format turns it into "['a', 'b']" - quotes, brackets and escaped
+    newlines, which no prompt should see and which a structured payload (a TOON
+    table, a JSON document) cannot survive. Join it into text, one item per
+    line, the way DataFrameRetriever.from_iterable already renders a list.
+
+    Everything else passes through untouched: scalars, tuples, lists of dicts,
+    and the list-of-tuples shape of AgentMessage.responses. The all-strings
+    guard is what keeps this from rewriting values whose repr is meaningful.
+    An empty list renders as "", so a retrieval that found nothing contributes
+    no text instead of the literal [].
+    """
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return "\n".join(value)
+    return value
+
+
 class TokenUsage(TypedDict):
     input_tokens: int
     output_tokens: int
@@ -137,10 +157,18 @@ class AgentMessage(BaseModel):
     def format_kwargs(self) -> Dict[str, Any]:
         """Keyword arguments for prompt-template interpolation.
 
-        Same as to_dict() but without the media fields (query_media and media).
-        Media must never be interpolated into a text template as a Python repr;
-        it is delivered to the model as native content parts instead.
-        Chains should call this method, not to_dict(), when formatting user prompt templates.
+        Same as to_dict() but without the media fields (query_media and media),
+        and with list-of-string values joined into text. Media must never be
+        interpolated into a text template as a Python repr; it is delivered to
+        the model as native content parts instead. The same reasoning covers a
+        list of strings, which has no useful repr form and is meant to be read
+        as lines of text (see _template_value).
+
+        The coercion lives here, in the presentation layer, and not in
+        flatten_dict()/to_dict(): those are the serialization path, where
+        context lists must stay lists so dump_json() round-trips faithfully.
+        Chains should call this method, not to_dict(), when formatting user
+        prompt templates - formatting with to_dict() still interpolates reprs.
 
         Returns:
             dict: Template-safe kwargs containing query, responses and flattened context.
@@ -148,7 +176,7 @@ class AgentMessage(BaseModel):
         kwargs = self.to_dict()
         kwargs.pop("query_media", None)
         kwargs.pop("media", None)
-        return kwargs
+        return {key: _template_value(value) for key, value in kwargs.items()}
 
     def dump_json(self) -> str:
         """

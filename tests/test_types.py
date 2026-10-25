@@ -195,6 +195,92 @@ class TestFormatKwargs:
         rendered = "{query}".format(**msg.format_kwargs())
         assert rendered == "what is this?"
 
+    def test_list_of_string_context_is_joined_not_reprd(self):
+        """A list of strings reaches the template as lines, not as "['a', 'b']"."""
+        msg = AgentMessage(query="q", context={"docs": ["first", "second"]})
+        kwargs = msg.format_kwargs()
+
+        assert kwargs["context_docs"] == "first\nsecond", (
+            "list-valued context must be joined; a Python repr in a prompt is the "
+            "defect this guards"
+        )
+        assert "{context_docs}".format(**kwargs) == "first\nsecond"
+
+    def test_to_dict_keeps_list_context_lossless(self):
+        """The join is a presentation concern; to_dict must stay faithful."""
+        msg = AgentMessage(query="q", context={"docs": ["first", "second"]})
+
+        assert msg.to_dict()["context_docs"] == ["first", "second"]
+        assert json.loads(msg.dump_json())["context_docs"] == ["first", "second"], (
+            "dump_json is the serialization path; coercing lists there would "
+            "silently change the wire format"
+        )
+
+    def test_structured_payload_survives_interpolation(self):
+        """A brace/newline-bearing document in a list stays parseable after format."""
+        doc = json.dumps({"a": 1, "b": [1, 2, 3]})
+        msg = AgentMessage(query="q", context={"data": [doc]})
+
+        rendered = "{context_data}".format(**msg.format_kwargs())
+
+        assert json.loads(rendered) == {"a": 1, "b": [1, 2, 3]}
+
+    def test_mixed_list_is_left_alone(self):
+        """The all-strings guard keeps values with a meaningful repr untouched."""
+        msg = AgentMessage(query="q", context={"mixed": ["a", {"b": 1}, 2]})
+
+        assert msg.format_kwargs()["context_mixed"] == ["a", {"b": 1}, 2]
+
+    def test_responses_are_not_joined(self):
+        """responses is a list of tuples, so the guard must not touch it."""
+        msg = AgentMessage(query="q", responses=[("user", "hi"), ("ai", "hello")])
+
+        assert msg.format_kwargs()["responses"] == [("user", "hi"), ("ai", "hello")]
+
+    def test_empty_list_renders_as_empty_text(self):
+        """A retrieval that found nothing contributes no text, not the literal []."""
+        msg = AgentMessage(query="q", context={"docs": []})
+
+        assert msg.format_kwargs()["context_docs"] == ""
+        assert "{context_docs}".format(**msg.format_kwargs()) == ""
+
+    def test_nested_list_of_string_context_is_joined(self):
+        """Flattening recurses into dicts, so nested lists get the same treatment."""
+        msg = AgentMessage(query="q", context={"retrieval": {"docs": ["x", "y"]}})
+
+        assert msg.format_kwargs()["context_retrieval_docs"] == "x\ny"
+        assert msg.to_dict()["context_retrieval_docs"] == ["x", "y"]
+
+    def test_scalar_and_none_values_unchanged(self):
+        """Regression: the coercion must not disturb non-list values."""
+        msg = AgentMessage(query="q", context={"n": 1, "t": True, "s": "text"})
+        kwargs = msg.format_kwargs()
+
+        assert (kwargs["context_n"], kwargs["context_t"], kwargs["context_s"]) == (
+            1,
+            True,
+            "text",
+        )
+
+    def test_none_inside_context_is_preserved(self):
+        """A None stored in context is not an absent field.
+
+        to_dict() drops None through model_dump(exclude_none=True), which only
+        covers the model's own fields; flattened context values bypass it, so a
+        None key survives and a template referencing it renders "None".
+        """
+        kwargs = AgentMessage(query="q", context={"none": None}).format_kwargs()
+
+        assert "context_none" in kwargs
+        assert kwargs["context_none"] is None
+
+    def test_empty_responses_render_as_empty_text(self):
+        """An empty responses list contributes no text instead of the literal []."""
+        kwargs = AgentMessage(query="q").format_kwargs()
+
+        assert kwargs["responses"] == ""
+        assert "{responses}".format(**kwargs) == ""
+
 
 class TestBaseChain:
     """Tests for BaseChain abstract class."""
