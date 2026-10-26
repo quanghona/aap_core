@@ -159,14 +159,20 @@ jobs:
       - name: Test PyPI package installation
         # Installs WITH dependencies: aap_core/__init__.py imports policy_trainer,
         # which imports torch/wandb at module level, so a --no-deps install cannot
-        # be imported at all. Deps resolve from PyPI via --extra-index-url because
-        # TestPyPI does not mirror them.
+        # be imported at all. PyPI stays the default index; TestPyPI is an extra.
+        # --index-strategy unsafe-best-match is REQUIRED: uv's default first-index
+        # strategy clamps each package to the first index containing its NAME, and
+        # TestPyPI hosts a stale a2a-sdk==0.2.0a1 squat, so a2a-sdk>=1.0.0 would
+        # never be looked up on PyPI. With best-match the exact-pinned aap-core
+        # comes from TestPyPI (not on PyPI yet) while deps resolve from PyPI.
+        # Trade-off: best-match gives up dependency-confusion protection; safe
+        # here because the target venv is throwaway and this job has no secrets.
         run: |
           VERSION=$(grep -m1 '^version' pyproject.toml | sed 's/.*"\(.*\)"/\1/')
           uv venv /tmp/smoke --python "$PYTHON_VERSION"
           uv pip install --python /tmp/smoke \
-            --index-url https://test.pypi.org/simple/ \
-            --extra-index-url https://pypi.org/simple \
+            --index-strategy unsafe-best-match \
+            --extra-index-url https://test.pypi.org/simple/ \
             "aap-core==${VERSION}"
           # Assert the package exposes __version__ and it matches pyproject.toml.
           /tmp/smoke/bin/python -c "import aap_core; assert aap_core.__version__ == '${VERSION}', aap_core.__version__; print('aap_core', aap_core.__version__)"
