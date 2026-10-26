@@ -80,6 +80,12 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: validate
+    # Explicitly minimal: when ci.yml is called via workflow_call, jobs without
+    # a permissions block inherit the CALLER's ceiling, which must be broad
+    # (publish_pypi.yml grants write/id-token for deploy-test's static check).
+    # Pinning read here keeps the build job from holding rights it never uses.
+    permissions:
+      contents: read # actions/checkout
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -141,6 +147,9 @@ jobs:
     name: Test TestPyPI package
     runs-on: ubuntu-latest
     needs: deploy-test
+    # Minimal on purpose; see the build job comment on inherited ceilings.
+    permissions:
+      contents: read # actions/checkout
     steps:
       - name: Wait for TestPyPI propagation
         run: sleep 30

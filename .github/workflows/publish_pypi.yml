@@ -27,13 +27,18 @@ jobs:
     with:
       gate_only: true
     permissions:
-      contents: read
-      # A called workflow's job permissions are silently capped to what the
-      # caller grants, so this must cover everything ci.yml needs on the gated
-      # path: the CodeQL SARIF upload. If the gate ever needs OIDC (e.g.
-      # gate_only is dropped so deploy-test runs), add id-token: write here or
-      # that job fails with an opaque auth error rather than a clear denial.
-      security-events: write
+      # This block is the CEILING for every job in ci.yml, and GitHub validates
+      # it at workflow-parse time against each nested job's declared permissions
+      # -- including jobs that `if: gate_only` will skip. deploy-test declares
+      # contents/id-token: write, so the ceiling must include them or the whole
+      # workflow file is rejected ("is requesting ... but is only allowed ...").
+      # Skipping is execution-time; validation is static. Granting the ceiling
+      # here grants nothing by itself: ci.yml jobs that must NOT hold these
+      # rights (build, test-pypi) pin themselves to contents: read, and
+      # deploy-test never executes on this path.
+      contents: write # ceiling for ci.yml's deploy-test (skipped via gate_only)
+      id-token: write # ceiling for ci.yml's deploy-test OIDC (skipped)
+      security-events: write # CodeQL SARIF upload in the validate job
 
   # ---------- Job 1: publish to PyPI + tag ----------
   publish:
