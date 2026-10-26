@@ -166,6 +166,7 @@ jobs:
           uv venv /tmp/smoke --python "$PYTHON_VERSION"
           uv pip install --python /tmp/smoke \
             --index-url https://test.pypi.org/simple/ \
+            --extra-index-url https://pypi.org/simple \
             "aap-core==${VERSION}"
           # Assert the package exposes __version__ and it matches pyproject.toml.
           /tmp/smoke/bin/python -c "import aap_core; assert aap_core.__version__ == '${VERSION}', aap_core.__version__; print('aap_core', aap_core.__version__)"
